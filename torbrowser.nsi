@@ -6,6 +6,8 @@
 ;Modern" UI
 
   !include "MUI2.nsh"
+  !include "LogicLib.nsh"
+  !include "WinVer.nsh"
 
 ;--------------------------------
 ;General
@@ -13,11 +15,26 @@
   ; location of Tor Browser bundle to put into installer
   !define TBBSOURCE ".\Tor Browser\"  
 
-  Name "Tor Browser Bundle"
+  !if "${CHANNEL}" == "release"
+    !define CHANNEL_NAME ""
+    !define CHANNEL_ICON "torbrowser-release.ico"
+  !endif
+
+  !if "${CHANNEL}" == "nightly"
+    !define CHANNEL_NAME " Nightly"
+    !define CHANNEL_ICON "torbrowser-nightly.ico"
+  !endif
+
+  !if "${CHANNEL}" == "alpha"
+    !define CHANNEL_NAME " Alpha"
+    !define CHANNEL_ICON "torbrowser-alpha.ico"
+  !endif
+
+  Name "Tor Browser${CHANNEL_NAME}"
   OutFile "torbrowser-install.exe"
 
   ;Default installation folder
-  InstallDir "$DESKTOP\Tor Browser"
+  InstallDir "$DESKTOP\Tor Browser${CHANNEL_NAME}"
   
   ;Best (but slowest) compression
   SetCompressor /SOLID lzma
@@ -29,7 +46,7 @@
 ;--------------------------------
 ;Interface Configuration
 
-  !define MUI_ICON   "torbrowser.ico"
+  !define MUI_ICON "${CHANNEL_ICON}"
   !define MUI_ABORTWARNING
 
 ;--------------------------------
@@ -37,6 +54,9 @@
   !define MUI_FINISHPAGE_NOREBOOTSUPPORT     ; we don't require a reboot
   !define MUI_FINISHPAGE_RUN
   !define MUI_FINISHPAGE_RUN_FUNCTION "StartTorBrowser"
+  !define MUI_FINISHPAGE_SHOWREADME ; misuse for option to create shortcut; less ugly than MUI_PAGE_COMPONENTS
+  !define MUI_FINISHPAGE_SHOWREADME_TEXT "&Add Start Menu && Desktop shortcuts"
+  !define MUI_FINISHPAGE_SHOWREADME_FUNCTION "CreateShortCuts"
 ;--------------------------------
 ;Pages
 
@@ -127,14 +147,36 @@ Section "Tor Browser Bundle" SecTBB
   SetOutPath "$INSTDIR"
   File /r "${TBBSOURCE}\*.*"
   SetOutPath "$INSTDIR\Browser"
-  CreateShortCut "$INSTDIR\Start Tor Browser.lnk" "$INSTDIR\Browser\firefox.exe"
-  
+  CreateShortCut "$INSTDIR\Tor Browser${CHANNEL_NAME}.lnk" "$INSTDIR\Browser\firefox.exe"
+
 SectionEnd
 
+Function CreateShortcuts
+
+  CreateShortCut "$SMPROGRAMS\Tor Browser${CHANNEL_NAME}.lnk" "$INSTDIR\Browser\firefox.exe" 
+  CreateShortCut "$DESKTOP\Tor Browser${CHANNEL_NAME}.lnk" "$INSTDIR\Browser\firefox.exe"
+
+FunctionEnd
 ;--------------------------------
 ;Installer Functions
 
 Function .onInit
+
+  ${IfNot} ${AtLeastWin7}
+    MessageBox MB_USERICON|MB_OK "Tor Browser requires at least Windows 7"
+    SetErrorLevel 1
+    Quit
+  ${EndIf}
+
+  ; Don't install on systems that don't support SSE2. The parameter value of
+  ; 10 is for PF_XMMI64_INSTRUCTIONS_AVAILABLE which will check whether the
+  ; SSE2 instruction set is available.
+  System::Call "kernel32::IsProcessorFeaturePresent(i 10)i .R7"
+
+  ${If} "$R7" == "0"
+    MessageBox MB_OK|MB_ICONSTOP "Sorry, Tor Browser can't be installed. This version of Tor Browser requires a processor with SSE2 support."
+    Abort
+  ${EndIf}
 
   !insertmacro MUI_LANGDLL_DISPLAY
 
@@ -153,6 +195,6 @@ FunctionEnd
 
 
 Function StartTorBrowser
-ExecShell "open" "$INSTDIR/Start Tor Browser.lnk"
+ExecShell "open" "$INSTDIR/Tor Browser${CHANNEL_NAME}.lnk"
 FunctionEnd
 
